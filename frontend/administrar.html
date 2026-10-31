@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Admin Productos</title>
+		<link rel="stylesheet" href="styles.css" />
+	</head>
+
+	<body>
+		<header>
+			<nav>
+				<figure>
+					<img class="logo" src="../img/logos/logo.png" alt="Logo de la tienda" />
+				</figure>
+				<ul class="lista_navegacion">
+					<li class="elemento_lista"><a href="index.html">Ver Catálogo de productos</a></li>
+					<li class="elemento_lista"><a href="administrar.html">Administrar</a></li>
+				</ul>
+			</nav>
+		</header>
+		<h1>Panel de administración de productos</h1>
+		<p><b>Desde este panel puedes administrar las categorías y productos de la tienda. y mostrar el stock disponible de cada producto.</b></p>
+
+		<div style="display: flex">
+			<aside class="crear-categorias">
+				<h3>Crear Categorias</h3>
+				<form id="category-form">
+					<div>
+						<label for="category-name">Nombre de la categoria:</label>
+						<input type="text" id="category-name" name="category-name" required />
+					</div>
+					<div>
+						<label for="category-description">Descripción de la categoria:</label>
+						<input type="text" id="category-description" name="category-description" />
+					</div>
+					<button class="btn-crear" type="submit">Crear Categoria</button>
+				</form>
+			</aside>
+
+			<main class="crear-productos">
+				<h3>Crear Productos</h3>
+				<form id="product-form">
+					<div>
+						<label for="product-category">Categoría del producto:</label>
+						<select id="product-category" name="product-category" required></select>
+					</div>
+					<div>
+						<label for="product-name">Nombre del producto:</label>
+						<input type="text" id="product-name" name="product-name" required />
+					</div>
+					<div>
+						<label for="product-description">Descripción del producto:</label>
+						<input type="text" id="product-description" name="product-description" />
+					</div>
+					<div>
+						<label for="product-price">Precio del producto:</label>
+						<input type="number" id="product-price" name="product-price" step="0.01" min="0" required />
+					</div>
+					<div>
+						<label for="product-stock">Stock:</label>
+						<input type="number" id="product-stock" name="product-stock" min="0" value="0" />
+					</div>
+					<div>
+						<label for="product-img">Ruta de la imagen (ej. img/ratones/logitec.jpg):</label>
+						<input type="text" id="product-img" name="product-img" />
+					</div>
+					<button class="btn-crear" type="submit">Crear Producto</button>
+				</form>
+			</main>
+		</div>
+
+		<h3>Vista previa de productos y Categorias</h3>
+		<div style="display: flex">
+			<aside>
+				<h3>Lista de Categorias</h3>
+				<ul id="categories"></ul>
+			</aside>
+			<main>
+				<div class="tarjeta-producto-admin">
+					<div id="products"></div>
+				</div>
+			</main>
+		</div>
+	</body>
+
+	<script>
+		const API = "http://localhost:8000";
+
+		function crearTarjeta(producto) {
+			const tarjeta = document.createElement("article");
+			tarjeta.classList.add("card-producto");
+
+			if (producto.img) {
+				const img = document.createElement("img");
+				img.src = "../" + producto.img;
+				img.alt = producto.nombre;
+				tarjeta.appendChild(img);
+			}
+
+			const nombre = document.createElement("h3");
+			nombre.textContent = producto.nombre;
+
+			const descripcion = document.createElement("p");
+			descripcion.textContent = producto.descripcion ?? "";
+
+			const precio = document.createElement("p");
+			precio.textContent = "$" + producto.precio.toFixed(2);
+
+			const stock = document.createElement("p");
+			stock.textContent = "Stock: " + producto.stock;
+
+			const btnEliminar = document.createElement("button");
+			btnEliminar.type = "button";
+			btnEliminar.classList.add("btn-eliminar");
+			btnEliminar.textContent = "Eliminar";
+			btnEliminar.addEventListener("click", async () => {
+				if (!confirm(`¿Eliminar "${producto.nombre}"?`)) return;
+				const respuesta = await fetch(`${API}/productos/${producto.id}`, { method: "DELETE" });
+				if (!respuesta.ok) {
+					alert("No se pudo eliminar el producto");
+					return;
+				}
+				cargarProductos();
+			});
+
+			tarjeta.append(nombre, descripcion, precio, stock, btnEliminar);
+			return tarjeta;
+		}
+
+		async function cargarCategorias() {
+			const categorias = await fetch(`${API}/categorias`).then((r) => r.json());
+
+			const lista = document.getElementById("categories");
+			lista.replaceChildren(...categorias.map((c) => {
+				const li = document.createElement("li");
+				li.textContent = c.nombre;
+				return li;
+			}));
+
+			const select = document.getElementById("product-category");
+			select.replaceChildren(...categorias.map((c) => new Option(c.nombre, c.id)));
+		}
+
+		async function cargarProductos() {
+			const [categorias, productos] = await Promise.all([
+				fetch(`${API}/categorias`).then((r) => r.json()),
+				fetch(`${API}/productos`).then((r) => r.json()),
+			]);
+
+			const secciones = categorias.map((categoria) => {
+				const delGrupo = productos.filter((p) => p.categoria_id === categoria.id);
+				if (delGrupo.length === 0) return null;
+
+				const seccion = document.createElement("section");
+				const titulo = document.createElement("h3");
+				titulo.textContent = "Categoría: " + categoria.nombre;
+				seccion.append(titulo, ...delGrupo.map(crearTarjeta));
+				return seccion;
+			}).filter(Boolean);
+
+			document.getElementById("products").replaceChildren(...secciones);
+		}
+
+		document.getElementById("category-form").addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const form = e.target;
+			const respuesta = await fetch(`${API}/categorias`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					nombre: form["category-name"].value,
+					descripcion: form["category-description"].value || null,
+				}),
+			});
+			if (!respuesta.ok) {
+				alert("No se pudo crear la categoría");
+				return;
+			}
+			form.reset();
+			cargarCategorias();
+		});
+
+		document.getElementById("product-form").addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const form = e.target;
+
+			const precioTexto = form["product-price"].value.trim();
+			const stockTexto = form["product-stock"].value.trim();
+			const precio = Number(precioTexto);
+			const stock = Number(stockTexto);
+
+			if (precioTexto === "" || !Number.isFinite(precio) || precio < 0) {
+				alert("El precio debe ser un número válido mayor o igual a 0");
+				return;
+			}
+			if (stockTexto === "" || !Number.isInteger(stock) || stock < 0) {
+				alert("El stock debe ser un número entero mayor o igual a 0");
+				return;
+			}
+
+			const respuesta = await fetch(`${API}/productos`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					categoria_id: Number(form["product-category"].value),
+					nombre: form["product-name"].value,
+					descripcion: form["product-description"].value || null,
+					precio,
+					stock,
+					img: form["product-img"].value || null,
+				}),
+			});
+			if (!respuesta.ok) {
+				alert("No se pudo crear el producto");
+				return;
+			}
+			form.reset();
+			cargarProductos();
+		});
+
+		cargarCategorias();
+		cargarProductos();
+	</script>
+</html>
